@@ -1,0 +1,23 @@
+# https://docs.gradle.org/current/userguide/platforms.html#sub::toml-dependencies-format
+# Example catalog file
+
+[versions]
+# Example versions, used in the buildSrc src kotlin extensions
+packagename = "com.example.app"
+applicationId = "com.example.app"
+versionCode = "1"
+versionName = "1.0"
+android-compileSdk = "34"
+android-minSdk = "24"
+android-targetSdk = "34"
+java = "11"
+agp = "8.6.0"
+
+
+[libraries]
+
+# Example convention Plugins Dependencies used in the buildSrc build.gradle.kts
+gradle-agp = { module = "com.android.tools.build:gradle", version.ref = "agp" } # https://maven.google.com/web/index.html#com.android.tools.build:gradle
+
+[plugins]
+jvm = { id = "org.jetbrains.kotlin.jvm", version = "1.9.22" }

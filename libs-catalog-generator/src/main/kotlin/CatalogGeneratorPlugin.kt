@@ -19,6 +19,13 @@ class CatalogGeneratorPlugin : Plugin<Any> {
     override fun apply(target: Any) {
         when (target) {
             is Settings -> with(target) {
+                dependencyResolutionManagement {
+                    repositories {
+                        google()
+                        gradlePluginPortal()
+                        mavenCentral()
+                    }
+                }
                 val config = extensions.create<CatalogGenConfig>(CATALOG_CONFIG_ACCESSOR)
                 gradle.settingsEvaluated {
                     dependencyResolutionManagement {

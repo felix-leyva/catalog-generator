@@ -4,7 +4,7 @@ plugins {
     id("com.gradle.plugin-publish") version "1.3.0"
 }
 group = "de.felixlf"
-version = "1.1"
+version = "1.2"
 
 gradlePlugin {
     plugins {
@@ -23,5 +23,8 @@ gradlePlugin {
 
 dependencies {
     implementation("com.squareup:kotlinpoet:1.18.1")
-    implementation("org.jetbrains.kotlin:kotlin-gradle-plugin")
+    // Use compileOnly for Kotlin dependencies to defer version resolution to the consuming project
+    compileOnly(platform("org.jetbrains.kotlin:kotlin-bom"))
+    compileOnly("org.jetbrains.kotlin:kotlin-gradle-plugin")
+    compileOnly("org.jetbrains.kotlin:kotlin-stdlib")
 }

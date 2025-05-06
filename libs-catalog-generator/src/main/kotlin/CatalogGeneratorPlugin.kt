@@ -4,8 +4,6 @@ import org.gradle.api.initialization.Settings
 import org.gradle.api.provider.Property
 import org.gradle.kotlin.dsl.create
 import org.gradle.kotlin.dsl.register
-import org.gradle.kotlin.dsl.withType
-import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 import java.io.File
 import java.io.FileNotFoundException
 
@@ -73,16 +71,36 @@ class CatalogGeneratorPlugin : Plugin<Any> {
     }
 
     private fun applyPluginToProject(project: Project) {
-        val config = project.extensions.extraProperties[CATALOG_CONFIG_ACCESSOR] as CatalogGenConfig
+        val config = try {
+            project.extensions.extraProperties[CATALOG_CONFIG_ACCESSOR] as CatalogGenConfig
+        } catch (_: Exception) {
+            // If config is not available, create a default one
+            project.extensions.create<CatalogGenConfig>(CATALOG_CONFIG_ACCESSOR)
+        }
 
-        project.plugins.apply("org.jetbrains.kotlin.jvm")
+        // Apply Kotlin plugin if not already applied, using string to avoid class reference
+        if (!project.plugins.hasPlugin("org.jetbrains.kotlin.jvm")) {
+            try {
+                project.plugins.apply("org.jetbrains.kotlin.jvm")
+            } catch (_: Exception) {
+                try {
+                    project.plugins.apply("kotlin")
+                } catch (_: Exception) {
+                    project.logger.warn("Could not apply Kotlin plugin. The plugin may still work if Kotlin is applied elsewhere.")
+                }
+            }
+        }
 
         project.tasks.register<TypeSafeCatalogTask>(TypeSafeCatalogTask.NAME) {
             catalogName.convention(config.catalogName.getOrElse(CATALOG_NAME))
             project.layout.buildDirectory.file("generated-sources/kotlin-dsl-plugins/kotlin/GeneratedCatalog.kt")
                 .let(generatedSourcesFile::convention)
         }
-        project.tasks.withType<KotlinCompile> {
+        
+        // Make Kotlin compile task depend on our generator task - using string-based API to avoid class reference
+        project.tasks.matching { task -> 
+            task.name == "compileKotlin" 
+        }.configureEach {
             dependsOn(TypeSafeCatalogTask.NAME)
         }
     }

@@ -4,7 +4,7 @@ plugins {
     id("com.gradle.plugin-publish") version "1.3.0"
 }
 group = "de.felixlf"
-version = "1.2"
+version = "1.3"
 
 gradlePlugin {
     plugins {
@@ -20,7 +20,16 @@ gradlePlugin {
         }
     }
 }
+java {
+    sourceCompatibility = JavaVersion.VERSION_1_8
+    targetCompatibility = JavaVersion.VERSION_1_8
+}
 
+tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
+    kotlinOptions {
+        jvmTarget = "1.8"
+    }
+}
 dependencies {
     implementation("com.squareup:kotlinpoet:1.18.1")
     // Use compileOnly for Kotlin dependencies to defer version resolution to the consuming project

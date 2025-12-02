@@ -1,5 +1,7 @@
 import org.gradle.api.Plugin
 import org.gradle.api.Project
+import org.gradle.api.file.RegularFile
+import org.gradle.api.file.RegularFileProperty
 import org.gradle.api.initialization.Settings
 import org.gradle.api.provider.Property
 import org.gradle.kotlin.dsl.create
@@ -14,6 +16,8 @@ import java.io.FileNotFoundException
  */
 @Suppress("UnstableApiUsage")
 class CatalogGeneratorPlugin : Plugin<Any> {
+    lateinit var catalogFile: File
+
     override fun apply(target: Any) {
         when (target) {
             is Settings -> with(target) {
@@ -55,6 +59,7 @@ class CatalogGeneratorPlugin : Plugin<Any> {
         while (currentDir.exists()) {
             val file = File(currentDir, location)
             if (file.exists()) {
+                catalogFile = file
                 return file.absolutePath
             }
             currentDir = currentDir.parentFile ?: break
@@ -93,13 +98,14 @@ class CatalogGeneratorPlugin : Plugin<Any> {
 
         project.tasks.register<TypeSafeCatalogTask>(TypeSafeCatalogTask.NAME) {
             catalogName.convention(config.catalogName.getOrElse(CATALOG_NAME))
+            catalogFile.convention(catalogFile)
             project.layout.buildDirectory.file("generated-sources/kotlin-dsl-plugins/kotlin/GeneratedCatalog.kt")
                 .let(generatedSourcesFile::convention)
         }
         
         // Make Kotlin compile task depend on our generator task - using string-based API to avoid class reference
         project.tasks.matching { task -> 
-            task.name == "compileKotlin" 
+            task.name == "compileKotlin"
         }.configureEach {
             dependsOn(TypeSafeCatalogTask.NAME)
         }
@@ -107,7 +113,7 @@ class CatalogGeneratorPlugin : Plugin<Any> {
 
     private companion object {
         const val TOML_CATALOG_LOCATION = "gradle/libs.versions.toml"
-        const val CATALOG_NAME = "libs"
+        const val CATALOG_NAME = "projectlibs"
         const val CATALOG_CONFIG_ACCESSOR = "catalogGenerator"
     }
 }

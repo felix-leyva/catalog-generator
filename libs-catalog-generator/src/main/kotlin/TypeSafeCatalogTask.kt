@@ -16,6 +16,7 @@ import org.gradle.api.file.RegularFileProperty
 import org.gradle.api.provider.Property
 import org.gradle.api.provider.Provider
 import org.gradle.api.tasks.Input
+import org.gradle.api.tasks.InputFile
 import org.gradle.api.tasks.OutputFile
 import org.gradle.api.tasks.TaskAction
 import org.gradle.kotlin.dsl.getByType
@@ -25,6 +26,9 @@ import java.util.Locale
 abstract class TypeSafeCatalogTask : DefaultTask() {
     @get:Input
     abstract val catalogName: Property<String>
+
+    @get:InputFile
+    abstract val catalogFile: RegularFileProperty
 
     @get:OutputFile
     abstract val generatedSourcesFile: RegularFileProperty
@@ -39,13 +43,13 @@ abstract class TypeSafeCatalogTask : DefaultTask() {
         val catalogs = project.extensions.getByType<VersionCatalogsExtension>()
         val catalogName = catalogName.get()
         val catalog = catalogs.named(catalogName)
-        val sourceCode = generateCode(catalog = catalog)
+        val sourceCode = generateCode(catalog = catalog, catalogName = catalogName)
         generatedSourcesFile.get().asFile.writeText(sourceCode.toString())
     }
 
-    private fun generateCode(catalog: VersionCatalog): FileSpec =
+    private fun generateCode(catalog: VersionCatalog, catalogName: String): FileSpec =
         FileSpec.builder("", "GeneratedCatalog").addImports().generateExtensionFunction()
-            .generateAccessorFunction().generateMainWrapperGeneratedCatalog()
+            .generateAccessorFunction(catalogName).generateMainWrapperGeneratedCatalog()
             .generateVersionsDataClass(catalog).generateLibrariesDataClass(catalog)
             .generateBundlesDataClass(catalog).generatePluginsDataClass(catalog)
             .generatePluginsIdEnum(catalog).build()
@@ -64,11 +68,11 @@ abstract class TypeSafeCatalogTask : DefaultTask() {
             .addStatement("return this.orElseThrow{ IllegalArgumentException(\" \$type alias '\$alias' not found\") }")
             .build().let(::addFunction)
 
-    private fun FileSpec.Builder.generateAccessorFunction() =
-        PropertySpec.builder("libs", ClassName("", "GeneratedCatalog"))
+    private fun FileSpec.Builder.generateAccessorFunction(catalogName: String) =
+        PropertySpec.builder(catalogName, ClassName("", "GeneratedCatalog"))
             .receiver(Project::class).getter(
                 FunSpec.getterBuilder().addStatement(
-                    "return GeneratedCatalog(extensions.getByType<VersionCatalogsExtension>().named(\"${catalogName.get()}\"))"
+                    "return GeneratedCatalog(extensions.getByType<VersionCatalogsExtension>().named(\"${catalogName}\"))"
                 ).build()
             ).build().let(::addProperty)
 

@@ -3,25 +3,25 @@ package extensions
 import com.android.build.gradle.BaseExtension
 import com.android.build.gradle.LibraryExtension
 import com.android.build.gradle.internal.dsl.BaseAppModuleExtension
-import libs
+import projectlibs
 import org.gradle.api.JavaVersion
 import org.gradle.api.Project
 import org.gradle.kotlin.dsl.get
 
 fun Project.baseAndroidConfig(baseExtension: BaseExtension) {
     baseExtension.apply {
-        compileSdkVersion(libs.versions.androidCompileSdk.toInt())
+        compileSdkVersion(projectlibs.versions.androidCompileSdk.toInt())
         sourceSets["main"].manifest.srcFile("src/androidMain/AndroidManifest.xml")
         sourceSets["main"].res.srcDirs("src/androidMain/res")
         sourceSets["main"].resources.srcDirs("src/commonMain/resources")
 
         defaultConfig {
-            minSdk = libs.versions.androidMinSdk.toInt()
+            minSdk = projectlibs.versions.androidMinSdk.toInt()
             if (this@apply is BaseAppModuleExtension) {
-                // targetSdk = libs.versions.androidTargetSdk.toInt()
-                applicationId = libs.versions.applicationId
-                versionCode = libs.versions.versionCode.toInt()
-                versionName = libs.versions.versionName
+                // targetSdk = projectlibs.versions.androidTargetSdk.toInt()
+                applicationId = projectlibs.versions.applicationId
+                versionCode = projectlibs.versions.versionCode.toInt()
+                versionName = projectlibs.versions.versionName
             }
             testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         }
@@ -40,8 +40,8 @@ fun Project.baseAndroidConfig(baseExtension: BaseExtension) {
         }
 
         compileOptions {
-            sourceCompatibility = JavaVersion.toVersion(libs.versions.java)
-            targetCompatibility = JavaVersion.toVersion(libs.versions.java)
+            sourceCompatibility = JavaVersion.toVersion(projectlibs.versions.java)
+            targetCompatibility = JavaVersion.toVersion(projectlibs.versions.java)
         }
 
     }

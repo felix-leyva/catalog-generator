@@ -4,7 +4,7 @@ plugins {
     id("com.gradle.plugin-publish") version "1.3.0"
 }
 group = "de.felixlf"
-version = "1.2"
+version = "2.0"
 
 gradlePlugin {
     plugins {
@@ -27,4 +27,31 @@ dependencies {
     compileOnly(platform("org.jetbrains.kotlin:kotlin-bom"))
     compileOnly("org.jetbrains.kotlin:kotlin-gradle-plugin")
     compileOnly("org.jetbrains.kotlin:kotlin-stdlib")
+
+    // Testing dependencies
+    testImplementation("org.jetbrains.kotlin:kotlin-test")
+    testImplementation("org.jetbrains.kotlin:kotlin-test-junit5")
+    testImplementation("org.junit.jupiter:junit-jupiter:5.10.0")
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
+
+    // Gradle TestKit for integration tests
+    testImplementation(gradleTestKit())
+}
+kotlin {
+    jvmToolchain(17)  // Use Java 17 to compile
+}
+
+tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
+    kotlinOptions {
+        jvmTarget = "11"  // Generate Java 11 compatible bytecode
+    }
+}
+
+tasks.withType<JavaCompile>().configureEach {
+    targetCompatibility = "11"  // Generate Java 11 compatible bytecode for Java files
+    sourceCompatibility = "11"
+}
+
+tasks.named<Test>("test") {
+    useJUnitPlatform()
 }

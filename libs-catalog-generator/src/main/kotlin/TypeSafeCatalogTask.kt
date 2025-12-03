@@ -15,21 +15,67 @@ import org.gradle.api.artifacts.VersionCatalogsExtension
 import org.gradle.api.file.RegularFileProperty
 import org.gradle.api.provider.Property
 import org.gradle.api.provider.Provider
+import org.gradle.api.tasks.CacheableTask
 import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.InputFile
 import org.gradle.api.tasks.OutputFile
+import org.gradle.api.tasks.PathSensitive
+import org.gradle.api.tasks.PathSensitivity
 import org.gradle.api.tasks.TaskAction
 import org.gradle.kotlin.dsl.getByType
 import org.gradle.plugin.use.PluginDependency
 import java.util.Locale
 
+/**
+ * Gradle task that generates type-safe Kotlin accessors for a version catalog.
+ *
+ * This task reads a TOML version catalog file and generates a Kotlin source file
+ * containing type-safe accessors for libraries, plugins, versions, and bundles defined
+ * in the catalog.
+ *
+ * ## Generated Code Structure
+ *
+ * The task generates a `GeneratedCatalog.kt` file containing:
+ * - `GeneratedCatalog` data class - Main wrapper class
+ * - `Versions` data class - Accessors for version declarations
+ * - `Libraries` class - Accessors for library dependencies
+ * - `Bundles` data class - Accessors for dependency bundles
+ * - `Plugins` data class - Accessors for Gradle plugins
+ * - `PluginsId` enum - Plugin IDs for use in plugin management
+ *
+ * ## Task Caching
+ *
+ * This task is annotated with [@CacheableTask], which means its outputs will be cached
+ * by Gradle's build cache when the inputs haven't changed, significantly improving
+ * build performance.
+ *
+ * @see CatalogGeneratorPlugin
+ */
+@CacheableTask
 abstract class TypeSafeCatalogTask : DefaultTask() {
+    /**
+     * The name of the version catalog to generate accessors for.
+     *
+     * This must match the catalog name configured in the settings file.
+     */
     @get:Input
     abstract val catalogName: Property<String>
 
+    /**
+     * The TOML file containing the version catalog definitions.
+     *
+     * Path sensitivity is set to [PathSensitivity.RELATIVE] to support build cache
+     * across different machines and directory structures.
+     */
     @get:InputFile
+    @get:PathSensitive(PathSensitivity.RELATIVE)
     abstract val catalogFile: RegularFileProperty
 
+    /**
+     * The Kotlin source file where generated accessors will be written.
+     *
+     * Typically located in `build/generated-sources/kotlin-dsl-plugins/kotlin/GeneratedCatalog.kt`
+     */
     @get:OutputFile
     abstract val generatedSourcesFile: RegularFileProperty
 
@@ -193,7 +239,10 @@ abstract class TypeSafeCatalogTask : DefaultTask() {
             PropertySpec.builder("id", String::class).initializer("id").build()
         ).apply {
             catalog.pluginAliases.forEach { alias ->
-                val pluginId = catalog.findPlugin(alias).get().get().pluginId
+                val plugin = catalog.findPlugin(alias)
+                    .orElseThrow { IllegalStateException("Plugin '$alias' not found in catalog") }
+                    .get()
+                val pluginId = plugin.pluginId
                 addEnumConstant(
                     alias.toCamelCase(),
                     TypeSpec.anonymousClassBuilder()
@@ -207,11 +256,49 @@ abstract class TypeSafeCatalogTask : DefaultTask() {
     }
 }
 
-private fun String.toCamelCase(): String = split("-", "_", ".").joinToString("") {
-    it.replaceFirstChar { firstChar ->
-        when {
-            firstChar.isLowerCase() -> firstChar.titlecase(Locale.getDefault())
-            else -> firstChar.toString()
+/**
+ * Converts a string with delimiters (-, _, .) to camelCase format suitable for Kotlin identifiers.
+ *
+ * ## Conversion Rules
+ * - Splits on: `-`, `_`, `.`
+ * - Capitalizes first letter of each part
+ * - Makes first letter lowercase for the result
+ * - Empty parts are filtered out
+ * - Returns "empty" for empty strings or strings with only delimiters
+ *
+ * ## Identifier Validation
+ * If the result is not a valid Kotlin identifier, it's wrapped in backticks (` `name` `).
+ *
+ * ## Examples
+ * ```
+ * "kotlin-stdlib" -> "kotlinStdlib"
+ * "my_lib" -> "myLib"
+ * "some.library" -> "someLibrary"
+ * "2-invalid" -> "`2Invalid`"  // Not a valid identifier, uses backticks
+ * "" -> "empty"
+ * "---" -> "empty"
+ * ```
+ *
+ * @receiver The string to convert to camelCase
+ * @return A valid Kotlin identifier in camelCase format
+ */
+internal fun String.toCamelCase(): String {
+    if (isEmpty()) return "empty"
+
+    val parts = split("-", "_", ".").filter { it.isNotEmpty() }
+    if (parts.isEmpty()) return "empty"
+
+    val camelCase = parts.joinToString("") { part ->
+        part.replaceFirstChar { char ->
+            if (char.isLowerCase()) char.titlecase(Locale.getDefault())
+            else char.toString()
         }
+    }.replaceFirstChar { it.lowercase(Locale.getDefault()) }
+
+    // Ensure it's a valid Kotlin identifier
+    return when {
+        camelCase.isEmpty() -> "empty"
+        camelCase.first().isJavaIdentifierStart() && camelCase.all { it.isJavaIdentifierPart() } -> camelCase
+        else -> "`$camelCase`"  // Use backticks for invalid identifiers
     }
-}.replaceFirstChar { it.lowercase(Locale.getDefault()) }
+}

@@ -5,9 +5,14 @@ and convention plugins. This solves the limitation described
 in [Gradle issue #15383](https://github.com/gradle/gradle/issues/15383) where version catalogs are not directly
 accessible from buildSrc or convention plugins.
 
-## Version 2.0
+## Version 2.1
 
-This major release adds support for Gradle 7.0 through 9.x with automatic configuration and enhanced compatibility.
+This release fixes the eager evaluation bug for `catalogTomlLocation`, ensuring user configuration is properly respected for relative and absolute paths.
+
+### What's New in 2.1
+- Fixed: Plugin now correctly respects custom `catalogTomlLocation` settings
+- Fixed: Support for relative paths (e.g., `../gradle/libs.versions.toml`)
+- Fixed: Support for absolute paths in nested project structures (build-logic/convention pattern)
 
 ## Features
 
@@ -49,7 +54,7 @@ In your `buildSrc/settings.gradle.kts` or convention plugin's `settings.gradle.k
 
 ```kotlin
 plugins {
-    id("de.felixlf.libs-catalog-generator") version "2.0"
+    id("de.felixlf.libs-catalog-generator") version "2.1"
 }
 ```
 
@@ -150,7 +155,7 @@ dependencies {
 ```kotlin
 // In buildSrc/settings.gradle.kts
 plugins {
-    id("de.felixlf.libs-catalog-generator") version "2.0"
+    id("de.felixlf.libs-catalog-generator") version "2.1"
 }
 
 // Optional configuration only if you need a different catalog name or location
@@ -186,7 +191,7 @@ The plugin generates a `GeneratedCatalog.kt` file in `build/generated-sources/ko
 ```kotlin
 // buildSrc/settings.gradle.kts
 plugins {
-    id("de.felixlf.libs-catalog-generator") version "2.0"
+    id("de.felixlf.libs-catalog-generator") version "2.1"
 }
 
 dependencyResolutionManagement {
@@ -213,7 +218,7 @@ dependencies {
 ```kotlin
 // convention-plugins/settings.gradle.kts
 plugins {
-    id("de.felixlf.libs-catalog-generator") version "2.0"
+    id("de.felixlf.libs-catalog-generator") version "2.1"
 }
 
 dependencyResolutionManagement {

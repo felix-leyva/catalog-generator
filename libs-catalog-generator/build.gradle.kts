@@ -4,7 +4,7 @@ plugins {
     id("com.gradle.plugin-publish") version "1.3.0"
 }
 group = "de.felixlf"
-version = "2.0"
+version = "2.1"
 
 gradlePlugin {
     plugins {

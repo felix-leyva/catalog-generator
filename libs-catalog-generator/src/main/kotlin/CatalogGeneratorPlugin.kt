@@ -5,6 +5,7 @@ import org.gradle.api.initialization.Settings
 import org.gradle.api.model.ObjectFactory
 import org.gradle.api.plugins.ExtraPropertiesExtension
 import org.gradle.api.provider.Property
+import org.gradle.api.provider.Provider
 import org.gradle.kotlin.dsl.create
 import org.gradle.kotlin.dsl.register
 import org.gradle.util.GradleVersion
@@ -61,10 +62,6 @@ import javax.inject.Inject
 class CatalogGeneratorPlugin @Inject constructor(
     private val objects: ObjectFactory
 ) : Plugin<Any> {
-    /**
-     * Holds the catalog file location once found. Null until the catalog file is located.
-     */
-    private var catalogFileOrNull: File? = null
     private val currentVersion = GradleVersion.current()
     private val gradle85 = GradleVersion.version("8.5")
     private val gradle70 = GradleVersion.version("7.0")
@@ -100,12 +97,14 @@ class CatalogGeneratorPlugin @Inject constructor(
                 }
 
                 gradle.settingsEvaluated {
-                    val catalogPath = target.findCatalogLocation(config)
-                    val catalogSource = fileReference(catalogPath)
+                    // Use provider to get catalog file - evaluated here after settings are fully configured
+                    val catalogFileProvider = target.findCatalogLocationProvider(config)
+                    val catalogSource = catalogFileProvider.get()
+                    val catalogNameValue = config.catalogName.orElse(CATALOG_NAME).get()
 
                     dependencyResolutionManagement {
                         versionCatalogs {
-                            create(config.catalogName.getOrElse(CATALOG_NAME)) {
+                            create(catalogNameValue) {
                                 from(
                                     fileCollectionFrom(catalogSource)
                                 )
@@ -125,48 +124,68 @@ class CatalogGeneratorPlugin @Inject constructor(
         }
     }
 
-    private fun Settings.findCatalogLocation(config: CatalogGenConfig): String {
-        val location = config.catalogTomlLocation.getOrElse(TOML_CATALOG_LOCATION)
-        var currentDir = rootDirectory()
-
-        while (currentDir.exists()) {
-            val file = File(currentDir, location)
-            if (file.exists()) {
-                catalogFileOrNull = file
-                return file.absolutePath
+    /**
+     * Creates a lazy provider that finds the catalog file location.
+     * The search is deferred until the provider is resolved, ensuring user configuration is respected.
+     */
+    private fun Settings.findCatalogLocationProvider(config: CatalogGenConfig): Provider<File> {
+        val rootDir = rootDirectory()
+        return config.catalogTomlLocation
+            .orElse(TOML_CATALOG_LOCATION)
+            .map { location ->
+                findCatalogFileInHierarchy(rootDir, location)
+                    ?: throw FileNotFoundException(
+                        "Could not find $location in the project hierarchy. Please specify " +
+                                "the correct location in the settings.gradle.kts file using the " +
+                                "catalogTomlLocation property of the catalogGenerator extension: \n" +
+                                "catalogGenerator {\n" +
+                                "    catalogTomlLocation.set(\"path/to/your/catalog.toml\")\n" +
+                                "}"
+                    )
             }
-            currentDir = currentDir.parentFile ?: break
-        }
-        throw FileNotFoundException(
-            "Could not find $location in the project hierarchy. Please specify " +
-                    "the correct location in the settings.gradle.kts file using the " +
-                    "catalogTomlLocation property of the catalogGenerator extension: \n" +
-                    "catalogGenerator {\n" +
-                    "    catalogTomlLocation.set(\"path/to/your/catalog.toml\")\n" +
-                    "}" +
-                    ""
-        )
     }
 
-    private fun findCatalogLocationInProject(project: Project, config: CatalogGenConfig): File {
-        val location = config.catalogTomlLocation.getOrElse(TOML_CATALOG_LOCATION)
-        var currentDir = project.rootDir
+    /**
+     * Searches for a catalog file starting from the given directory and walking up the hierarchy.
+     * Returns null if not found.
+     */
+    private fun findCatalogFileInHierarchy(startDir: File, location: String): File? {
+        // If location is absolute, use it directly
+        val locationFile = File(location)
+        if (locationFile.isAbsolute) {
+            return if (locationFile.exists()) locationFile else null
+        }
 
-        while (currentDir.exists()) {
+        // Otherwise search up the directory hierarchy
+        var currentDir: File? = startDir
+        while (currentDir != null && currentDir.exists()) {
             val file = File(currentDir, location)
             if (file.exists()) {
                 return file
             }
-            currentDir = currentDir.parentFile ?: break
+            currentDir = currentDir.parentFile
         }
-        throw FileNotFoundException(
-            "Could not find $location in the project hierarchy. Please specify " +
-                    "the correct location in the build.gradle.kts file using the " +
-                    "catalogTomlLocation property of the catalogGenerator extension: \n" +
-                    "catalogGenerator {\n" +
-                    "    catalogTomlLocation.set(\"path/to/your/catalog.toml\")\n" +
-                    "}"
-        )
+        return null
+    }
+
+    /**
+     * Creates a lazy provider that finds the catalog file location for a project.
+     * The search is deferred until the provider is resolved, ensuring user configuration is respected.
+     */
+    private fun findCatalogLocationProviderInProject(project: Project, config: CatalogGenConfig): Provider<File> {
+        return config.catalogTomlLocation
+            .orElse(TOML_CATALOG_LOCATION)
+            .map { location ->
+                findCatalogFileInHierarchy(project.rootDir, location)
+                    ?: throw FileNotFoundException(
+                        "Could not find $location in the project hierarchy. Please specify " +
+                                "the correct location in the build.gradle.kts file using the " +
+                                "catalogTomlLocation property of the catalogGenerator extension: \n" +
+                                "catalogGenerator {\n" +
+                                "    catalogTomlLocation.set(\"path/to/your/catalog.toml\")\n" +
+                                "}"
+                    )
+            }
     }
 
     private fun applyPluginToProject(project: Project) {
@@ -177,8 +196,8 @@ class CatalogGeneratorPlugin @Inject constructor(
                 null
             } ?: project.extensions.create<CatalogGenConfig>(CATALOG_CONFIG_ACCESSOR)
 
-        // Get or find the catalog file
-        val catalogFile = catalogFileOrNull ?: findCatalogLocationInProject(project, config)
+        // Create a lazy provider for the catalog file - evaluated only when needed
+        val catalogFileProvider = findCatalogLocationProviderInProject(project, config)
 
         // Apply Kotlin plugin if not already applied, using string to avoid class reference
         if (!project.plugins.hasPlugin("org.jetbrains.kotlin.jvm")) {
@@ -194,11 +213,11 @@ class CatalogGeneratorPlugin @Inject constructor(
         }
 
         project.tasks.register<TypeSafeCatalogTask>(TypeSafeCatalogTask.NAME) {
-            catalogName.convention(config.catalogName.getOrElse(CATALOG_NAME))
+            // Use orElse to maintain lazy evaluation chain
+            catalogName.convention(config.catalogName.orElse(CATALOG_NAME))
+            // Wire the catalogFile lazily using the provider
             this.catalogFile.convention(
-                project.layout.projectDirectory.file(
-                    project.rootDir.toPath().relativize(catalogFile.toPath()).toString()
-                )
+                project.layout.file(catalogFileProvider)
             )
             project.layout.buildDirectory.file("generated-sources/kotlin-dsl-plugins/kotlin/GeneratedCatalog.kt")
                 .let(generatedSourcesFile::convention)

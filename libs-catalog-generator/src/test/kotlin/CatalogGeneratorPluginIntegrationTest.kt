@@ -346,6 +346,307 @@ class CatalogGeneratorPluginIntegrationTest {
             val generatedFile = File(testProjectDir, "build/generated-sources/kotlin-dsl-plugins/kotlin/GeneratedCatalog.kt")
             assertTrue(generatedFile.exists())
         }
+
+        @Test
+        @DisplayName("should work with absolute path to catalog file")
+        fun `works with absolute path to catalog file`() {
+            // Create catalog file in a custom location
+            val catalogFile = File(testProjectDir, "custom-location/libs.versions.toml").apply {
+                parentFile.mkdirs()
+                writeText(DEFAULT_CATALOG)
+            }
+
+            // Use absolute path in configuration
+            testProjectDir.createSettingsFile(
+                """
+                catalogGenerator {
+                    catalogTomlLocation.set("${catalogFile.absolutePath.replace("\\", "\\\\")}")
+                }
+                """.trimIndent()
+            )
+            testProjectDir.createBuildFile()
+
+            val result = GradleRunner.create()
+                .withProjectDir(testProjectDir)
+                .withArguments("generateTypeSafeCatalog", "--stacktrace")
+                .withPluginClasspath()
+                .build()
+
+            assertEquals(TaskOutcome.SUCCESS, result.task(":generateTypeSafeCatalog")?.outcome)
+
+            val generatedFile = File(testProjectDir, "build/generated-sources/kotlin-dsl-plugins/kotlin/GeneratedCatalog.kt")
+            assertTrue(generatedFile.exists(), "GeneratedCatalog.kt should exist")
+        }
+    }
+
+    @Nested
+    @DisplayName("Nested Project Structure (build-logic pattern)")
+    inner class NestedProjectStructure {
+
+        @Test
+        @DisplayName("should work with catalog in parent directory using relative path")
+        fun `works with catalog in parent directory using relative path`() {
+            // Simulate a build-logic/convention structure where:
+            // - Main project root has gradle/libs.versions.toml
+            // - build-logic/convention is a separate Gradle build that needs to access it
+
+            // Create the main project catalog at parent level
+            val parentDir = testProjectDir
+            File(parentDir, "gradle/libs.versions.toml").apply {
+                parentFile.mkdirs()
+                writeText(DEFAULT_CATALOG)
+            }
+
+            // Create the nested build-logic directory
+            val buildLogicDir = File(parentDir, "build-logic").apply { mkdirs() }
+
+            // Create settings for build-logic that references parent catalog with relative path
+            File(buildLogicDir, "settings.gradle.kts").writeText(
+                """
+                @file:Suppress("UnstableApiUsage")
+
+                rootProject.name = "build-logic"
+
+                plugins {
+                    id("de.felixlf.libs-catalog-generator")
+                }
+
+                catalogGenerator {
+                    // Use relative path to access catalog in parent directory
+                    catalogTomlLocation.set("../gradle/libs.versions.toml")
+                }
+
+                dependencyResolutionManagement {
+                    repositories {
+                        mavenCentral()
+                        gradlePluginPortal()
+                    }
+                }
+                """.trimIndent()
+            )
+
+            File(buildLogicDir, "build.gradle.kts").writeText(
+                """
+                plugins {
+                    `kotlin-dsl`
+                }
+                """.trimIndent()
+            )
+
+            val result = GradleRunner.create()
+                .withProjectDir(buildLogicDir)
+                .withArguments("generateTypeSafeCatalog", "--stacktrace")
+                .withPluginClasspath()
+                .build()
+
+            assertEquals(TaskOutcome.SUCCESS, result.task(":generateTypeSafeCatalog")?.outcome)
+
+            val generatedFile = File(buildLogicDir, "build/generated-sources/kotlin-dsl-plugins/kotlin/GeneratedCatalog.kt")
+            assertTrue(generatedFile.exists(), "GeneratedCatalog.kt should exist")
+        }
+
+        @Test
+        @DisplayName("should work with catalog in parent directory using absolute path via file()")
+        fun `works with catalog in parent directory using absolute path`() {
+            // Simulate a build-logic/convention structure with absolute path
+
+            // Create the main project catalog at parent level
+            val parentDir = testProjectDir
+            val catalogFile = File(parentDir, "gradle/libs.versions.toml").apply {
+                parentFile.mkdirs()
+                writeText(DEFAULT_CATALOG)
+            }
+
+            // Create the nested build-logic directory
+            val buildLogicDir = File(parentDir, "build-logic").apply { mkdirs() }
+
+            // Create settings for build-logic that references parent catalog with absolute path
+            File(buildLogicDir, "settings.gradle.kts").writeText(
+                """
+                @file:Suppress("UnstableApiUsage")
+
+                rootProject.name = "build-logic"
+
+                plugins {
+                    id("de.felixlf.libs-catalog-generator")
+                }
+
+                catalogGenerator {
+                    // Use absolute path (simulating what user would do with file().absolutePath)
+                    catalogTomlLocation.set("${catalogFile.absolutePath.replace("\\", "\\\\")}")
+                }
+
+                dependencyResolutionManagement {
+                    repositories {
+                        mavenCentral()
+                        gradlePluginPortal()
+                    }
+                }
+                """.trimIndent()
+            )
+
+            File(buildLogicDir, "build.gradle.kts").writeText(
+                """
+                plugins {
+                    `kotlin-dsl`
+                }
+                """.trimIndent()
+            )
+
+            val result = GradleRunner.create()
+                .withProjectDir(buildLogicDir)
+                .withArguments("generateTypeSafeCatalog", "--stacktrace")
+                .withPluginClasspath()
+                .build()
+
+            assertEquals(TaskOutcome.SUCCESS, result.task(":generateTypeSafeCatalog")?.outcome)
+
+            val generatedFile = File(buildLogicDir, "build/generated-sources/kotlin-dsl-plugins/kotlin/GeneratedCatalog.kt")
+            assertTrue(generatedFile.exists(), "GeneratedCatalog.kt should exist")
+        }
+
+        @Test
+        @DisplayName("should work with deeply nested project structure")
+        fun `works with deeply nested project structure`() {
+            // Simulate build-logic/convention pattern where convention is two levels down
+
+            // Create the main project catalog at root level
+            val rootDir = testProjectDir
+            File(rootDir, "gradle/libs.versions.toml").apply {
+                parentFile.mkdirs()
+                writeText(DEFAULT_CATALOG)
+            }
+
+            // Create deeply nested convention directory
+            val conventionDir = File(rootDir, "build-logic/convention").apply { mkdirs() }
+
+            // Create settings for convention that references root catalog
+            File(conventionDir, "settings.gradle.kts").writeText(
+                """
+                @file:Suppress("UnstableApiUsage")
+
+                rootProject.name = "convention"
+
+                plugins {
+                    id("de.felixlf.libs-catalog-generator")
+                }
+
+                catalogGenerator {
+                    // Path relative to convention dir going up two levels
+                    catalogTomlLocation.set("../../gradle/libs.versions.toml")
+                }
+
+                dependencyResolutionManagement {
+                    repositories {
+                        mavenCentral()
+                        gradlePluginPortal()
+                    }
+                }
+                """.trimIndent()
+            )
+
+            File(conventionDir, "build.gradle.kts").writeText(
+                """
+                plugins {
+                    `kotlin-dsl`
+                }
+                """.trimIndent()
+            )
+
+            val result = GradleRunner.create()
+                .withProjectDir(conventionDir)
+                .withArguments("generateTypeSafeCatalog", "--stacktrace")
+                .withPluginClasspath()
+                .build()
+
+            assertEquals(TaskOutcome.SUCCESS, result.task(":generateTypeSafeCatalog")?.outcome)
+
+            val generatedFile = File(conventionDir, "build/generated-sources/kotlin-dsl-plugins/kotlin/GeneratedCatalog.kt")
+            assertTrue(generatedFile.exists(), "GeneratedCatalog.kt should exist")
+        }
+
+        @Test
+        @DisplayName("should work with file() and rootDir pattern from user issue")
+        fun `works with file rootDir pattern from user issue`() {
+            // This test reproduces the exact pattern from the GitHub issue:
+            // catalogGenerator {
+            //     val catalogFileLocal = file("$rootDir/../gradle/libs.versions.toml")
+            //     catalogTomlLocation = catalogFileLocal.absolutePath
+            // }
+
+            // Create the main project catalog at parent level (simulating the real project root)
+            val parentDir = testProjectDir
+            File(parentDir, "gradle/libs.versions.toml").apply {
+                parentFile.mkdirs()
+                writeText(DEFAULT_CATALOG)
+            }
+
+            // Create the build-logic directory (this is where the plugin is applied)
+            val buildLogicDir = File(parentDir, "build-logic").apply { mkdirs() }
+
+            // Create settings using the exact pattern from the user's issue
+            File(buildLogicDir, "settings.gradle.kts").writeText(
+                """
+                @file:Suppress("UnstableApiUsage")
+
+                rootProject.name = "build-logic"
+
+                plugins {
+                    id("de.felixlf.libs-catalog-generator")
+                }
+
+                catalogGenerator {
+                    // This mimics the user's pattern:
+                    // val catalogFileLocal = file("${'$'}rootDir/../gradle/libs.versions.toml")
+                    // catalogTomlLocation = catalogFileLocal.absolutePath
+                    val catalogFileLocal = file("${'$'}rootDir/../gradle/libs.versions.toml")
+                    println("catalogFile = ${'$'}catalogFileLocal")
+                    catalogTomlLocation.set(catalogFileLocal.absolutePath)
+                    println("catalogTomlLocation after setting = ${'$'}{catalogTomlLocation.get()}")
+                }
+
+                dependencyResolutionManagement {
+                    repositories {
+                        mavenCentral()
+                        gradlePluginPortal()
+                    }
+                }
+                """.trimIndent()
+            )
+
+            File(buildLogicDir, "build.gradle.kts").writeText(
+                """
+                plugins {
+                    `kotlin-dsl`
+                }
+                """.trimIndent()
+            )
+
+            val result = GradleRunner.create()
+                .withProjectDir(buildLogicDir)
+                .withArguments("generateTypeSafeCatalog", "--stacktrace")
+                .withPluginClasspath()
+                .build()
+
+            // Verify the println outputs show correct values
+            assertTrue(
+                result.output.contains("catalogFile = ") && result.output.contains("libs.versions.toml"),
+                "Should print the catalog file path"
+            )
+            assertTrue(
+                result.output.contains("catalogTomlLocation after setting = ") && result.output.contains("libs.versions.toml"),
+                "Should print the catalogTomlLocation after setting"
+            )
+
+            assertEquals(TaskOutcome.SUCCESS, result.task(":generateTypeSafeCatalog")?.outcome)
+
+            val generatedFile = File(buildLogicDir, "build/generated-sources/kotlin-dsl-plugins/kotlin/GeneratedCatalog.kt")
+            assertTrue(generatedFile.exists(), "GeneratedCatalog.kt should exist")
+
+            // Verify the generated file contains expected content
+            val content = generatedFile.readText()
+            assertTrue(content.contains("projectlibs"), "Should contain default catalog name")
+        }
     }
 
     @Nested
